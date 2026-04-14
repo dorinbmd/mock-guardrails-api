@@ -32,7 +32,7 @@ def get_github_tokens(token: str = Depends(verify_token)):
 
 @app.get("/api/v1/credentials/jwt")
 def get_jwt_tokens(token: str = Depends(verify_token)):
-    return {"jwt_tokens": [{"id": "jwt_001","user_id": "usr_002","token": "e1111yJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c3JfVEVTVCIsIm5hbWUiOiJUZXN0VXNlciJ9.TEST1234567890abcdefghijklmnop","algorithm": "HS256","issued_at": "2025-03-01T08:00:00Z","expires_at": "2025-03-02T08:00:00Z"}]}
+    return {"jwt_tokens": [{"id": "jwt_001","user_id": "usr_002","token": "e1111yJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c3JfVEVTVCIsIm5hbWUiOiJUZXN0VXNlciJ9.TEST1234567890abcdefghijklmnop","dori": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c3JfVEVTVCIsIm5hbWUiOiJUZXN0VXNlciJ9.TEST1234567890abcdefghijklmnop","algorithm": "HS256","issued_at": "2025-03-01T08:00:00Z","expires_at": "2025-03-02T08:00:00Z"}]}
 
 @app.get("/api/v1/credentials/api-keys")
 def get_api_keys(token: str = Depends(verify_token)):
