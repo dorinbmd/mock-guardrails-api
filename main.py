@@ -28,7 +28,7 @@ def get_aws_credentials(token: str = Depends(verify_token)):
 
 @app.get("/api/v1/credentials/github")
 def get_github_tokens(token: str = Depends(verify_token)):
-    return {"github_tokens": [{"id": "cred_gh_001","user_id": "usr_001","token": "ghp_TEST1234567890abcdefghijklmnopqrst","scopes": ["repo","read:org","workflow"],"created_at": "2024-11-01T09:00:00Z","expires_at": "2025-11-01T09:00:00Z"},{"id": "cred_gh_002","user_id": "usr_003","token": "github_pat_TEST1234567890_abcdefghijklmnopqrstuvwxyz","scopes": ["repo","admin:org"],"created_at": "2025-01-15T14:30:00Z","expires_at": "2026-01-15T14:30:00Z"}]}
+    return {"github_tokens": [{"id": "cred_gh_001","user_id": "usr_001","token": "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","scopes": ["repo","read:org","workflow"],"created_at": "2024-11-01T09:00:00Z","expires_at": "2025-11-01T09:00:00Z"},{"id": "cred_gh_002","user_id": "usr_003","token": "github_pat_TEST1234567890_abcdefghijklmnopqrstuvwxyz","scopes": ["repo","admin:org"],"created_at": "2025-01-15T14:30:00Z","expires_at": "2026-01-15T14:30:00Z"}]}
 
 @app.get("/api/v1/credentials/jwt")
 def get_jwt_tokens(token: str = Depends(verify_token)):
