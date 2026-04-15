@@ -1,3 +1,4 @@
+
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
@@ -36,7 +37,31 @@ def get_jwt_tokens(token: str = Depends(verify_token)):
 
 @app.get("/api/v1/credentials/api-keys")
 def get_api_keys(token: str = Depends(verify_token)):
-    return {"api_keys": [{"id": "apikey_001","service": "Stripe","key": "STRIPE_TEST_KEY_PLACEHOLDER_001","environment": "production","created_by": "usr_001"},{"id": "apikey_002","service": "SendGrid","key": "SG.TEST1234567890abcdefghijklmnopqrstuvwxyz","environment": "production","created_by": "usr_002"},{"id": "apikey_003","service": "Twilio","key": "SKxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx","environment": "staging","created_by": "usr_003"}]}
+    return {
+  "api_keys": [
+    {
+      "id": "apikey_001",
+      "service": "Stripe",
+      "key": "sk_live_51N8r8hKx9YzAbCdEfGhIjKlMnOpQrStUvWxYz0123456789ABCDEF",
+      "environment": "production",
+      "created_by": "usr_001"
+    },
+    {
+      "id": "apikey_002",
+      "service": "SendGrid",
+      "key": "SG.xYzAbCdEfGhIjKlMnOpQrStUvWxYz0123456789ABCDEFghijklmnop",
+      "environment": "production",
+      "created_by": "usr_002"
+    },
+    {
+      "id": "apikey_003",
+      "service": "Twilio",
+      "key": "SK4f8c2a9d7b6e5f1c3a2b9d8e7f6a5c4",
+      "environment": "staging",
+      "created_by": "usr_003"
+    }
+  ]
+}
 
 @app.get("/api/v1/all-sensitive")
 def get_all_sensitive(token: str = Depends(verify_token)):
