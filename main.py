@@ -93,6 +93,14 @@ def flaky_get(token: str = Depends(verify_token)):
 def flaky_post(token: str = Depends(verify_token)):
     return _flaky_response("post")
 
+@app.put("/api/v1/flaky")
+def flaky_put(token: str = Depends(verify_token)):
+    return _flaky_response("put")
+
+@app.delete("/api/v1/flaky")
+def flaky_delete(token: str = Depends(verify_token)):
+    return _flaky_response("delete")
+
 @app.post("/api/v1/flaky/reset")
 def flaky_reset(token: str = Depends(verify_token)):
     _flaky_counts.clear()
