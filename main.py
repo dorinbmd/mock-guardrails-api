@@ -1,4 +1,3 @@
-
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
@@ -66,3 +65,39 @@ def get_api_keys(token: str = Depends(verify_token)):
 @app.get("/api/v1/all-sensitive")
 def get_all_sensitive(token: str = Depends(verify_token)):
     return {"record": {"user": {"name": "Alice Johnson","email": "alice.johnson@acme-corp.com","phone": "+1 (212) 555-0147","ssn": "372-82-9156"},"payment": {"card_number": "4532 1151 0823 9147","cvv": "412"},"aws": {"access_key_id": "AKIAIOSFODNN7EXAMPLE","secret_access_key": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"},"github_token": "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","token": "eyJraWQiOiJLMFpTOVFSZjcwSTlyUXdvNUwyZGJJUGxIV0RnZFhrWHd2N1g4dHVIMGJRPSIsImFsZyI6IlJTMjU2In0.eyJzdWIiOiJlNWU1ZDhlOS03ZmNlLTQ5N2EtOWU5Zi1mM2YzYWVkOTBkYzIiLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAuZXUtd2VzdC0yLmFtYXpvbmF3cy5jb21cL2V1LXdlc3QtMl9UcGpGN2p4NTUiLCJjbGllbnRfaWQiOiI1NWdmMTlmcHJ0MXZlamhiMWd0MzhtaGw2MCIsIm9yaWdpbl9qdGkiOiJlZDc4NzI4Ny0zMWMwLTRkN2MtYTk4ZS0xNjc4ZWRhMGFhYzQiLCJldmVudF9pZCI6ImE0MjhkNzNkLTM2ZGItNDg1Zi1iMjY5LWY5ZDBkNTg2ZWVjNSIsInRva2VuX3VzZSI6ImFjY2VzcyIsInNjb3BlIjoiYXdzLmNvZ25pdG8uc2lnbmluLnVzZXIuYWRtaW4iLCJhdXRoX3RpbWUiOjE3NjUxODgzNzEsImV4cCI6MTc2NTM2MjQ4MiwiaWF0IjoxNzY1MzU4ODgyLCJqdGkiOiIwMzI2NTE3NS1kOThlLTQ4MzUtYWY1MS0zMzlkYzI2MTRjODYiLCJ1c2VybmFtZSI6ImU1ZTVkOGU5LTdmY2UtNDk3YS05ZTlmLWYzZjNhZWQ5MGRjMiJ9.Hgzo0ul5SWZ32swSSJCcqr27QPh3wZ6uk7HZI4psVX3EP6OWGUNmm-rCMyKUobAv1ITuc92j49vJhH5Gxl4DTMNZDkAyTJik5r9niJ07uj5-CWWSW37WDNKGvfbzFCtJ0QJ76dEaVIff6z3tXskA9Hb-8-LmXi13Mymmgvp3_FV-IKW26Wi2GVLnqHjNAnmjHbg2_6SgeRBIq8aySlu_GzhKLpS3pDcox7KFQ1pQR4YPXnLk4VZ_BbznWr_6c4na2mEwudp2lk7F3umQW_7_n0Y5nXTnUgMiT2UBceUpUCcfyQTBGwoMZaf5PpChMaDA1VzeDngeKyHHyw9eM8LncQ","api_key": "STRIPE_TEST_KEY_PLACEHOLDER_002"}}
+
+
+# ---------------------------------------------------------------------------
+# Write Idempotency (Retry Safety) test support
+#
+# Adds a flaky endpoint (GET + POST) that returns 503 on the first request
+# for a given path and 200 on every request after that, plus /reset and
+# /counts so tests can drive and verify request counts deterministically.
+# Reuses the same verify_token dependency as the rest of this API.
+# ---------------------------------------------------------------------------
+
+_flaky_counts: dict[str, int] = {}
+
+def _flaky_response(path_key: str):
+    _flaky_counts[path_key] = _flaky_counts.get(path_key, 0) + 1
+    n = _flaky_counts[path_key]
+    if n == 1:
+        raise HTTPException(status_code=503, detail="Service Unavailable")
+    return {"ok": True, "attempt": n}
+
+@app.get("/api/v1/flaky")
+def flaky_get(token: str = Depends(verify_token)):
+    return _flaky_response("get")
+
+@app.post("/api/v1/flaky")
+def flaky_post(token: str = Depends(verify_token)):
+    return _flaky_response("post")
+
+@app.post("/api/v1/flaky/reset")
+def flaky_reset(token: str = Depends(verify_token)):
+    _flaky_counts.clear()
+    return {"reset": True}
+
+@app.get("/api/v1/flaky/counts")
+def flaky_counts(token: str = Depends(verify_token)):
+    return dict(_flaky_counts)
