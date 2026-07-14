@@ -186,7 +186,37 @@ class Mutation:
         _require_token(info)
         _graphql_mutation_counts.clear()
         return True
+# Add to main.py to support the "read-only query vs transient failure ->
+# retried" test. Mirrors the existing flaky_mutation resolver, but as a
+# Query field, so it's exercised as an idempotent read rather than a write.
+#
+# Placement: inside the `Query` class (alongside `ping` / `flaky_mutation_count`),
+# and needs a counter dict + reset mutation alongside the existing
+# `_graphql_mutation_counts` / `reset_flaky_mutation`.
 
+_graphql_query_counts: dict[str, int] = {}
+
+# --- inside class Query: ---
+@strawberry.field(
+    description=(
+        "Read-only. Transient failure on first call, succeeds after. "
+        "Idempotent -- safe for a retry engine to retry on transient error."
+    )
+)
+def flaky_query(self) -> MutationResult:
+    key = "graphql_query"
+    _graphql_query_counts[key] = _graphql_query_counts.get(key, 0) + 1
+    n = _graphql_query_counts[key]
+    if n == 1:
+        raise Exception("Service Unavailable (transient)")
+    return MutationResult(ok=True, attempt=n)
+
+# --- inside class Mutation: ---
+@strawberry.mutation(description="Resets the GraphQL flaky query counter.")
+def reset_flaky_query(self, info: Info) -> bool:
+    _require_token(info)
+    _graphql_query_counts.clear()
+    return True
 
 schema = strawberry.Schema(query=Query, mutation=Mutation)
 graphql_app = GraphQLRouter(schema, path="")
