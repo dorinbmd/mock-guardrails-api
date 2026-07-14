@@ -66,7 +66,6 @@ def get_api_keys(token: str = Depends(verify_token)):
 def get_all_sensitive(token: str = Depends(verify_token)):
     return {"record": {"user": {"name": "Alice Johnson","email": "alice.johnson@acme-corp.com","phone": "+1 (212) 555-0147","ssn": "372-82-9156"},"payment": {"card_number": "4532 1151 0823 9147","cvv": "412"},"aws": {"access_key_id": "AKIAIOSFODNN7EXAMPLE","secret_access_key": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"},"github_token": "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","token": "eyJraWQiOiJLMFpTOVFSZjcwSTlyUXdvNUwyZGJJUGxIV0RnZFhrWHd2N1g4dHVIMGJRPSIsImFsZyI6IlJTMjU2In0.eyJzdWIiOiJlNWU1ZDhlOS03ZmNlLTQ5N2EtOWU5Zi1mM2YzYWVkOTBkYzIiLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAuZXUtd2VzdC0yLmFtYXpvbmF3cy5jb21cL2V1LXdlc3QtMl9UcGpGN2p4NTUiLCJjbGllbnRfaWQiOiI1NWdmMTlmcHJ0MXZlamhiMWd0MzhtaGw2MCIsIm9yaWdpbl9qdGkiOiJlZDc4NzI4Ny0zMWMwLTRkN2MtYTk4ZS0xNjc4ZWRhMGFhYzQiLCJldmVudF9pZCI6ImE0MjhkNzNkLTM2ZGItNDg1Zi1iMjY5LWY5ZDBkNTg2ZWVjNSIsInRva2VuX3VzZSI6ImFjY2VzcyIsInNjb3BlIjoiYXdzLmNvZ25pdG8uc2lnbmluLnVzZXIuYWRtaW4iLCJhdXRoX3RpbWUiOjE3NjUxODgzNzEsImV4cCI6MTc2NTM2MjQ4MiwiaWF0IjoxNzY1MzU4ODgyLCJqdGkiOiIwMzI2NTE3NS1kOThlLTQ4MzUtYWY1MS0zMzlkYzI2MTRjODYiLCJ1c2VybmFtZSI6ImU1ZTVkOGU5LTdmY2UtNDk3YS05ZTlmLWYzZjNhZWQ5MGRjMiJ9.Hgzo0ul5SWZ32swSSJCcqr27QPh3wZ6uk7HZI4psVX3EP6OWGUNmm-rCMyKUobAv1ITuc92j49vJhH5Gxl4DTMNZDkAyTJik5r9niJ07uj5-CWWSW37WDNKGvfbzFCtJ0QJ76dEaVIff6z3tXskA9Hb-8-LmXi13Mymmgvp3_FV-IKW26Wi2GVLnqHjNAnmjHbg2_6SgeRBIq8aySlu_GzhKLpS3pDcox7KFQ1pQR4YPXnLk4VZ_BbznWr_6c4na2mEwudp2lk7F3umQW_7_n0Y5nXTnUgMiT2UBceUpUCcfyQTBGwoMZaf5PpChMaDA1VzeDngeKyHHyw9eM8LncQ","api_key": "STRIPE_TEST_KEY_PLACEHOLDER_002"}}
 
-
 # ---------------------------------------------------------------------------
 # Write Idempotency (Retry Safety) test support
 #
@@ -76,7 +75,6 @@ def get_all_sensitive(token: str = Depends(verify_token)):
 # deterministically. Reuses the same verify_token dependency as the rest of
 # this API.
 # ---------------------------------------------------------------------------
-
 _flaky_counts: dict[str, int] = {}
 
 def _flaky_response(path_key: str):
@@ -111,9 +109,8 @@ def flaky_reset(token: str = Depends(verify_token)):
 def flaky_counts(token: str = Depends(verify_token)):
     return dict(_flaky_counts)
 
-
 # ---------------------------------------------------------------------------
-# GraphQL mutation test support
+# GraphQL mutation + query test support
 #
 # REST idempotency is inferred from the HTTP verb (GET/PUT/DELETE = safe to
 # retry, POST = not). GraphQL has no such transport-level signal -- every
@@ -126,20 +123,30 @@ def flaky_counts(token: str = Depends(verify_token)):
 # `flakyMutation` behaves like the REST flaky endpoints (503 on first call,
 # success after) but is declared as a GraphQL Mutation, so a retry engine
 # that respects the annotation should NOT retry it on transient failure.
+#
+# `flakyQuery` mirrors it but is declared as a GraphQL Query field, so it's
+# exercised as an idempotent read -- a retry engine SHOULD retry it on
+# transient failure.
 # ---------------------------------------------------------------------------
-
 import strawberry
 from strawberry.fastapi import GraphQLRouter
 from strawberry.types import Info
 
-
 _graphql_mutation_counts: dict[str, int] = {}
+_graphql_query_counts: dict[str, int] = {}
 
 
 @strawberry.type
 class MutationResult:
     ok: bool
     attempt: int
+
+
+def _require_token(info: Info) -> None:
+    request = info.context["request"]
+    auth = request.headers.get("authorization", "")
+    if not auth.startswith("Bearer ") or auth.removeprefix("Bearer ") != BEARER_TOKEN:
+        raise Exception("Invalid or missing Bearer token")
 
 
 @strawberry.type
@@ -152,12 +159,19 @@ class Query:
     def flaky_mutation_count(self) -> int:
         return _graphql_mutation_counts.get("graphql_mutation", 0)
 
-
-def _require_token(info: Info) -> None:
-    request = info.context["request"]
-    auth = request.headers.get("authorization", "")
-    if not auth.startswith("Bearer ") or auth.removeprefix("Bearer ") != BEARER_TOKEN:
-        raise Exception("Invalid or missing Bearer token")
+    @strawberry.field(
+        description=(
+            "Read-only. Transient failure on first call, succeeds after. "
+            "Idempotent -- safe for a retry engine to retry on transient error."
+        )
+    )
+    def flaky_query(self) -> MutationResult:
+        key = "graphql_query"
+        _graphql_query_counts[key] = _graphql_query_counts.get(key, 0) + 1
+        n = _graphql_query_counts[key]
+        if n == 1:
+            raise Exception("Service Unavailable (transient)")
+        return MutationResult(ok=True, attempt=n)
 
 
 @strawberry.type
@@ -186,37 +200,13 @@ class Mutation:
         _require_token(info)
         _graphql_mutation_counts.clear()
         return True
-# Add to main.py to support the "read-only query vs transient failure ->
-# retried" test. Mirrors the existing flaky_mutation resolver, but as a
-# Query field, so it's exercised as an idempotent read rather than a write.
-#
-# Placement: inside the `Query` class (alongside `ping` / `flaky_mutation_count`),
-# and needs a counter dict + reset mutation alongside the existing
-# `_graphql_mutation_counts` / `reset_flaky_mutation`.
 
-_graphql_query_counts: dict[str, int] = {}
+    @strawberry.mutation(description="Resets the GraphQL flaky query counter.")
+    def reset_flaky_query(self, info: Info) -> bool:
+        _require_token(info)
+        _graphql_query_counts.clear()
+        return True
 
-# --- inside class Query: ---
-@strawberry.field(
-    description=(
-        "Read-only. Transient failure on first call, succeeds after. "
-        "Idempotent -- safe for a retry engine to retry on transient error."
-    )
-)
-def flaky_query(self) -> MutationResult:
-    key = "graphql_query"
-    _graphql_query_counts[key] = _graphql_query_counts.get(key, 0) + 1
-    n = _graphql_query_counts[key]
-    if n == 1:
-        raise Exception("Service Unavailable (transient)")
-    return MutationResult(ok=True, attempt=n)
-
-# --- inside class Mutation: ---
-@strawberry.mutation(description="Resets the GraphQL flaky query counter.")
-def reset_flaky_query(self, info: Info) -> bool:
-    _require_token(info)
-    _graphql_query_counts.clear()
-    return True
 
 schema = strawberry.Schema(query=Query, mutation=Mutation)
 graphql_app = GraphQLRouter(schema, path="")
