@@ -70,10 +70,11 @@ def get_all_sensitive(token: str = Depends(verify_token)):
 # ---------------------------------------------------------------------------
 # Write Idempotency (Retry Safety) test support
 #
-# Adds a flaky endpoint (GET + POST) that returns 503 on the first request
-# for a given path and 200 on every request after that, plus /reset and
-# /counts so tests can drive and verify request counts deterministically.
-# Reuses the same verify_token dependency as the rest of this API.
+# Adds a flaky endpoint (GET + POST + PUT + DELETE) that returns 503 on the
+# first request for a given path and 200 on every request after that, plus
+# /reset and /counts so tests can drive and verify request counts
+# deterministically. Reuses the same verify_token dependency as the rest of
+# this API.
 # ---------------------------------------------------------------------------
 
 _flaky_counts: dict[str, int] = {}
@@ -109,3 +110,84 @@ def flaky_reset(token: str = Depends(verify_token)):
 @app.get("/api/v1/flaky/counts")
 def flaky_counts(token: str = Depends(verify_token)):
     return dict(_flaky_counts)
+
+
+# ---------------------------------------------------------------------------
+# GraphQL mutation test support
+#
+# REST idempotency is inferred from the HTTP verb (GET/PUT/DELETE = safe to
+# retry, POST = not). GraphQL has no such transport-level signal -- every
+# operation goes over POST. Idempotency there is annotation-driven instead:
+# the schema itself declares an operation as `Query` (read-only) or
+# `Mutation` (a write, never safe to blindly retry), and a well-behaved
+# client/executor must honor that schema-level annotation rather than
+# guessing from the HTTP method.
+#
+# `flakyMutation` behaves like the REST flaky endpoints (503 on first call,
+# success after) but is declared as a GraphQL Mutation, so a retry engine
+# that respects the annotation should NOT retry it on transient failure.
+# ---------------------------------------------------------------------------
+
+import strawberry
+from strawberry.fastapi import GraphQLRouter
+from strawberry.types import Info
+
+
+_graphql_mutation_counts: dict[str, int] = {}
+
+
+@strawberry.type
+class MutationResult:
+    ok: bool
+    attempt: int
+
+
+@strawberry.type
+class Query:
+    @strawberry.field(description="Read-only health check. Safe to retry.")
+    def ping(self) -> str:
+        return "pong"
+
+    @strawberry.field(description="Read-only. Returns how many times flakyMutation has been called.")
+    def flaky_mutation_count(self) -> int:
+        return _graphql_mutation_counts.get("graphql_mutation", 0)
+
+
+def _require_token(info: Info) -> None:
+    request = info.context["request"]
+    auth = request.headers.get("authorization", "")
+    if not auth.startswith("Bearer ") or auth.removeprefix("Bearer ") != BEARER_TOKEN:
+        raise Exception("Invalid or missing Bearer token")
+
+
+@strawberry.type
+class Mutation:
+    @strawberry.mutation(
+        description=(
+            "Write operation (GraphQL Mutation, not Query). Non-idempotent and "
+            "not retry-safe: repeating it can duplicate the write. Returns a "
+            "transient failure on the first call, then succeeds -- a correct "
+            "retry engine must NOT auto-retry this on error, since safety here "
+            "is annotation-driven (Mutation type) rather than inferred from an "
+            "HTTP verb."
+        )
+    )
+    def flaky_mutation(self, info: Info) -> MutationResult:
+        _require_token(info)
+        key = "graphql_mutation"
+        _graphql_mutation_counts[key] = _graphql_mutation_counts.get(key, 0) + 1
+        n = _graphql_mutation_counts[key]
+        if n == 1:
+            raise Exception("Service Unavailable (transient)")
+        return MutationResult(ok=True, attempt=n)
+
+    @strawberry.mutation(description="Resets the GraphQL flaky mutation counter.")
+    def reset_flaky_mutation(self, info: Info) -> bool:
+        _require_token(info)
+        _graphql_mutation_counts.clear()
+        return True
+
+
+schema = strawberry.Schema(query=Query, mutation=Mutation)
+graphql_app = GraphQLRouter(schema, path="")
+app.include_router(graphql_app, prefix="/api/v1/graphql")
